@@ -102,10 +102,11 @@ fn process_line(line: &str, line_num: usize) -> (Vec<NumberSpan>, Vec<Symbol>) {
         match ch {
             '0'..='9' => active_span.set_position(position),
             '.' => active_span.finish(line),
-            _ => {
+            '*' => {
                 symbols.push(Symbol { line: line_num, position });
                 active_span.finish(line)
             }
+            _ => ()
         }
 
         if active_span.is_complete() {
@@ -127,11 +128,14 @@ fn filter_number_spans(symbols: Vec<Symbol>, spans: Vec<NumberSpan>) -> Vec<u32>
     let mut adjacent_number = Vec::new();
     symbols
         .iter()
-        .for_each(|symbol| spans.iter().for_each(|span| {
+        .map(|symbol| spans.iter().fold(Vec::new(), |mut adj_numbers: Vec<u32>, span| {
             if symbol.is_adjacent_to(span) {
-                adjacent_number.push(span.value);
+                adj_numbers.push(span.value);
             }
-        }));
+            adj_numbers
+        }))
+        .filter(|adj_numbers| adj_numbers.len() == 2)
+        .for_each(|adj_numbers| adjacent_number.push(adj_numbers[0] * adj_numbers[1]));
     adjacent_number
 }
 
@@ -151,7 +155,7 @@ mod tests {
 ......755.
 ...$.*....
 .664.598.."#;
-        assert_eq!(gear_ratio(input), 4361);
+        assert_eq!(gear_ratio(input), 467835);
     }
 
     #[test]

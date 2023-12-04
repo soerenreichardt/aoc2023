@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub(crate) fn winning_points(input: &str) -> u32 {
     preprocess_input(input)
@@ -53,22 +53,30 @@ fn score_scratch_card(winning_numbers: HashSet<u32>, game_numbers: Vec<u32>) -> 
 fn count_cards_with_copies(games: Vec<(HashSet<u32>, Vec<u32>)>) -> u32 {
     let mut card_stack = games.iter().enumerate().collect::<Vec<_>>();
     let mut game_counter = 0;
+    let mut game_cache = HashMap::new();
 
     while !card_stack.is_empty() {
         let mut copies = Vec::new();
         for (game_num, (winning_numbers, game_numbers)) in card_stack.into_iter() {
             game_counter += 1;
-            let mut copy_counter = 0;
-            for num in game_numbers {
-                if winning_numbers.contains(&num) {
-                    copy_counter += 1;
+            if !game_cache.contains_key(&game_num) {
+                let mut copy_counter = 0;
+                for num in game_numbers {
+                    if winning_numbers.contains(&num) {
+                        copy_counter += 1;
+                    }
                 }
+
+                let mut local_copies = Vec::new();
+                for copy_index in 1..=copy_counter {
+                    let copy_game_num = game_num + copy_index;
+                    local_copies.push((copy_game_num, &games[copy_game_num]))
+                }
+                game_cache.insert(game_num, local_copies);
             }
 
-            for copy_index in 1..=copy_counter {
-                let copy_game_num = game_num + copy_index;
-                copies.push((copy_game_num, &games[copy_game_num]))
-            }
+            let local_copies = game_cache.get(&game_num).unwrap().clone();
+            copies.extend(local_copies);
         }
         // add copies to stack
         card_stack = copies;

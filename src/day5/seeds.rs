@@ -23,6 +23,9 @@ pub fn sum_locations(input: &str) -> usize {
         .unwrap().1
         .split_ascii_whitespace()
         .map(|num| num.parse::<usize>().unwrap())
+        .collect::<Vec<_>>()
+        .chunks(2)
+        .flat_map(|chunk| (chunk[0]..chunk[0] + chunk[1]).into_iter())
         .collect::<Vec<_>>();
 
     let mappings = input[1..]
@@ -39,15 +42,12 @@ fn traverse_mappings(seeds: Vec<usize>, mappings: HashMap<&str, Mappings>) -> us
     let mut locations = Vec::new();
     for seed in seeds {
         let mut current_mapping = mappings.get("seed").unwrap();
-        // println!("== seed {seed}");
         let mut mapped_seed = seed;
         while current_mapping.to != "location" {
             mapped_seed = current_mapping.map_seed(mapped_seed);
-            // println!("{} {mapped_seed}", current_mapping.to);
             current_mapping = mappings.get(current_mapping.to).unwrap();
         }
         let location = current_mapping.map_seed(mapped_seed);
-        // println!("{} {location}", current_mapping.to);
         locations.push(location)
     }
 
@@ -123,7 +123,7 @@ impl FromStr for Mapping {
 
 #[cfg(test)]
 mod tests {
-    use crate::day5::seeds::{Mapping, Mappings, sum_locations};
+    use crate::day5::seeds::sum_locations;
 
     #[test]
     fn should_find_closest_location() {

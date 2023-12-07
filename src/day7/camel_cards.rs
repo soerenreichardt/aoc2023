@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::str::FromStr;
 
-const CARDS: [char; 13] = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+const CARDS: [char; 13] = ['J', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'Q', 'K', 'A'];
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 struct Hand {
@@ -10,7 +10,7 @@ struct Hand {
 }
 
 #[repr(u8)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum HandType {
     HighCard,
     OnePair,
@@ -87,9 +87,9 @@ impl PartialEq for HandType {
 
 impl Hand
 {
-    fn occurrences(&self) -> HashMap<char, u32> {
+    fn occurrences(cards: [char;5]) -> HashMap<char, u32> {
         let mut occurrences = HashMap::new();
-        for card in self.cards {
+        for card in cards {
             let entry = occurrences.entry(card).or_insert(0);
             *entry += 1;
         }
@@ -97,7 +97,22 @@ impl Hand
     }
 
     fn hand_type(&self) -> HandType {
-        let occurrences = self.occurrences();
+        if self.cards.contains(&'J') {
+            let mut max = None;
+            for cards in self.replacements_for_joker() {
+                if max.is_none() {
+                    max = Some(cards);
+                } else {
+                    max = Some(max.unwrap().max(cards));
+                }
+            }
+            return Self::hand_type_for(&max.unwrap());
+        }
+        Self::hand_type_for(self)
+    }
+
+    fn hand_type_for(hand: &Hand) -> HandType {
+        let occurrences = Self::occurrences(hand.cards);
         let mut values = occurrences.values().filter(|value| **value != 0).collect::<Vec<_>>();
         values.sort_by(|a, b| b.cmp(a));
         match values[..] {
@@ -109,6 +124,20 @@ impl Hand
             [2, ..] => HandType::OnePair,
             [..] => HandType::HighCard,
         }
+    }
+
+    fn replacements_for_joker(&self) -> Vec<Hand> {
+        let mut replacements = Vec::new();
+        for replacement in &CARDS[1..] {
+            let mut new_cards = self.cards.clone();
+            for c in new_cards.iter_mut() {
+                if *c == 'J' {
+                    *c = *replacement
+                }
+            }
+            replacements.push(Hand{ cards: new_cards });
+        }
+        replacements
     }
 }
 
@@ -124,7 +153,7 @@ T55J5 684
 KK677 28
 KTJJT 220
 QQQJA 483"#;
-        assert_eq!(score_hands(input), 6440);
+        assert_eq!(score_hands(input), 5905);
     }
 
     #[test]
@@ -148,5 +177,13 @@ QQQJA 483"#;
         let rhs = Hand { cards: ['K', 'T', 'J', 'J', 'T'] };
         let ordering = lhs.cmp(&rhs);
         assert_eq!(ordering, Ordering::Greater);
+    }
+
+    #[test]
+    fn should_compute_max() {
+        let lhs = Hand { cards: ['T', '5', '5', '5', '5'] };
+        let rhs = Hand { cards: ['T', '5', '5', '6', '5'] };
+
+        assert_eq!(Hand { cards: ['T', '5', '5', '5', '5'] }, rhs.max(lhs));
     }
 }

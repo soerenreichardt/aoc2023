@@ -46,21 +46,18 @@ fn parse_input(input: &str) -> (Vec<Direction>, HashMap<&str, (&str, &str)>) {
 const START: &str = "AAA";
 const GOAL: &str = "ZZZ";
 fn follow_network(directions: Vec<Direction>, network: HashMap<&str, (&str, &str)>) -> u32 {
-    solve_single_start(&directions, &network, START, |s| s == GOAL).1
+    solve_single_start(&directions, &network, START, |s| s == GOAL)
 }
 
 fn parallel_follow(directions: Vec<Direction>, network: HashMap<&str, (&str, &str)>) -> usize {
-    let mut start_positions = network.keys().filter(|node| node.ends_with('A')).map(|&node| node).collect::<Vec<_>>();
+    let mut start_positions = network.keys().filter(|node| node.ends_with('A')).copied().collect::<Vec<_>>();
 
-    let mut steps: Vec<usize> = start_positions.iter().map(|start_position| {
-        // paths to goals repeat after the second iteration, so no need to traverse any farther
-        let (goal_element, steps_taken, dir_index) = solve_single_start(&directions, &network, start_position, |s| s.ends_with('Z'));
-        println!("{} -> {} {}", start_position, goal_element, steps_taken);
-        steps_taken as usize
+    let steps: Vec<usize> = start_positions.iter().map(|start_position| {
+        // paths to goals repeat after the first iteration, so no need to traverse any farther
+        solve_single_start(&directions, &network, start_position, |s| s.ends_with('Z')) as usize
     }).collect();
 
-    // use a calculator from here :/
-    todo!()
+    steps.into_iter().reduce(|a, b| (a * b) / gdc(a, b)).unwrap()
 }
 
 fn solve_single_start<'a>(
@@ -68,22 +65,30 @@ fn solve_single_start<'a>(
     network: &HashMap<&'a str, (&'a str, &'a str)>,
     start: &str,
     predicate: fn(&str) -> bool
-) -> (&'a str, u32, usize) {
+) -> u32 {
     let mut steps_taken: u32 = 0;
     let mut next_elements = network.get(start).unwrap();
     loop {
-        for (i, direction) in directions.iter().enumerate() {
+        for direction in directions.iter() {
             let chosen_element = match direction {
                 Direction::Left => next_elements.0,
                 Direction::Right => next_elements.1
             };
             steps_taken += 1;
             if predicate(chosen_element) {
-                return (chosen_element, steps_taken, i+1);
+                return steps_taken;
             }
             next_elements = network.get(chosen_element).unwrap();
         }
     }
+}
+
+fn gdc(a: usize, b: usize) -> usize {
+    if b == 0 {
+        return a;
+    }
+
+    gdc(b, a % b)
 }
 
 #[cfg(test)]

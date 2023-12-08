@@ -129,7 +129,7 @@ impl Hand
     fn replacements_for_joker(&self) -> Vec<Hand> {
         let mut replacements = Vec::new();
         for replacement in &CARDS[1..] {
-            let mut new_cards = self.cards.clone();
+            let mut new_cards = self.cards;
             for c in new_cards.iter_mut() {
                 if *c == 'J' {
                     *c = *replacement

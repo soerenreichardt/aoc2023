@@ -1,46 +1,31 @@
 pub fn extrapolate(input: &str) -> i64 {
-    input.lines()
-        .map(|line| line.split_ascii_whitespace().map(|s| s.parse::<i64>().unwrap()).collect::<Vec<_>>())
-        .map(extrapolate_from_history)
-        .sum()
+    do_extrapolate(input, extrapolate_from_deltas)
 }
 
 pub fn extrapolate_backwards(input: &str) -> i64 {
+    do_extrapolate(input, extrapolate_backwards_from_deltas)
+}
+
+fn do_extrapolate(input: &str, map_fn: fn (Vec<Vec<i64>>) -> i64) -> i64 {
     input.lines()
         .map(|line| line.split_ascii_whitespace().map(|s| s.parse::<i64>().unwrap()).collect::<Vec<_>>())
-        .map(extrapolate_backwards_from_history)
+        .map(compute_deltas_until_all_zero)
+        .map(map_fn)
         .sum()
 }
 
-fn extrapolate_from_history(history: Vec<i64>) -> i64 {
-    let all_deltas = compute_deltas_until_all_zero(history);
-    extrapolate_from_deltas(all_deltas)
-}
-
-fn extrapolate_backwards_from_history(history: Vec<i64>) -> i64 {
-    let all_deltas = compute_deltas_until_all_zero(history);
-    extrapolate_backwards_from_deltas(all_deltas)
-}
-
 fn extrapolate_from_deltas(all_deltas: Vec<Vec<i64>>) -> i64 {
-    let mut extrapolation = 0;
-
-    for deltas in all_deltas[..all_deltas.len()-1].iter().rev() {
-        extrapolation += deltas.last().unwrap();
-    }
-
-    extrapolation
+    all_deltas[..all_deltas.len()-1]
+        .iter()
+        .rev()
+        .fold(0, |extrapolation, deltas| extrapolation + deltas.last().unwrap())
 }
 
 fn extrapolate_backwards_from_deltas(all_deltas: Vec<Vec<i64>>) -> i64 {
-    let mut extrapolation = 0;
-
-    for deltas in all_deltas[..all_deltas.len() - 1].iter().rev() {
-        extrapolation = deltas.first().unwrap() - extrapolation;
-    }
-
-    println!("{}", extrapolation);
-    extrapolation
+    all_deltas[..all_deltas.len() - 1]
+        .iter()
+        .rev()
+        .fold(0, |extrapolation, deltas| deltas.first().unwrap() - extrapolation)
 }
 
 fn compute_deltas_until_all_zero(history: Vec<i64>) -> Vec<Vec<i64>> {

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::Peekable;
 use std::slice::Iter;
@@ -14,14 +15,22 @@ impl From<char> for SpringState {
     }
 }
 
-impl FromStr for SpringRecord {
-    type Err = ();
+impl From<(&str, usize)> for SpringRecord {
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from((s, copies): (&str, usize)) -> Self {
         let (row, damage_group) = s.split_once(' ').unwrap();
-        let state_row = row.chars().map(|c| c.into()).collect();
-        let damage_groups = damage_group.split(',').map(|s| s.parse::<usize>().unwrap()).collect();
-        Ok(SpringRecord { state_row, damage_groups })
+        let mut state_row: Vec<_> = row.chars().map(|c| c.into()).collect();
+        let mut damage_groups: Vec<_> = damage_group.split(',').map(|s| s.parse::<usize>().unwrap()).collect();
+
+        let state_row_copy = state_row.clone();
+        let damage_groups_copy = damage_groups.clone();
+
+        (0..copies - 1).for_each(|_| {
+            state_row.push(SpringState::Unknown);
+            state_row.extend(state_row_copy.clone());
+            damage_groups.extend(damage_groups_copy.clone());
+        });
+        SpringRecord { state_row, damage_groups, copies }
     }
 }
 
@@ -54,34 +63,33 @@ impl Display for SpringRecord {
     }
 }
 
-pub fn count_arrangements(input: &str) -> u32 {
-    let spring_records = parse_input(input);
+pub fn count_arrangements(input: &str, copies: usize) -> usize {
+    let spring_records = parse_input(input, copies);
     spring_records.iter()
-        .map(|record| record.find_valid_replacements_for_unknown().len() as u32)
+        .map(|record| record.find_valid_replacements_for_unknown())
         .sum()
 }
 
-fn parse_input(input: &str) -> Vec<SpringRecord> {
-    input.lines().map(|line| SpringRecord::from_str(line).unwrap()).collect()
+fn parse_input(input: &str, copies: usize) -> Vec<SpringRecord> {
+    input.lines().map(|line| SpringRecord::from((line, copies))).collect()
 }
 
 impl SpringRecord {
-    fn find_valid_replacements_for_unknown(&self) -> Vec<Vec<SpringState>> {
-        let damage_groups = self.damage_groups.iter().peekable();
-        let damage_tracker = DamageTracker { damage_groups, damage_counter: 0, next_can_be_damaged: true };
-        println!("========================================");
-        println!("start  {:?} - {:?}", self.state_row, self.damage_groups);
-        Self::fork_replacement_search(damage_tracker, self.state_row.clone(), 0)
+    fn find_valid_replacements_for_unknown(&self) -> usize {
+        let damage_tracker = DamageTracker { damage_group_index: 0, damage_groups: &self.damage_groups, damage_counter: 0, next_can_be_damaged: true };
+        let mut cache = HashMap::new();
+        Self::fork_replacement_search(damage_tracker, self.state_row.clone(), 0, &mut cache)
     }
 
     fn fork_replacement_search(
         mut damage_tracker: DamageTracker,
         mut state_row: Vec<SpringState>,
-        state_row_start: usize
-    ) -> Vec<Vec<SpringState>> {
-        let mut replacements = Vec::new();
+        state_row_start: usize,
+        cache: &mut HashMap<TraversalState, usize>
+    ) -> usize {
 
         for (col, spring_state) in state_row.iter_mut().enumerate().skip(state_row_start) {
+
             let valid_state = match spring_state {
                 SpringState::Operational => damage_tracker.allow_next_to_be_damaged(),
                 SpringState::Damaged => damage_tracker.record_damage(),
@@ -95,41 +103,60 @@ impl SpringRecord {
                         damage_tracker.record_damage()
                     },
                     SpringState::Unknown => {
+                        let key = TraversalState::new(damage_tracker.damage_group_index, col, damage_tracker.damage_counter);
+                        if let Some(entry) = cache.get(&key) {
+                            return *entry;
+                        }
                         // this can be either Operational or Damaged
                         let mut forked_state_row = state_row.clone();
                         forked_state_row[col] = SpringState::Damaged;
-                        replacements.extend(Self::fork_replacement_search(damage_tracker.clone(), forked_state_row, col));
-
                         state_row[col] = SpringState::Operational;
-                        replacements.extend(Self::fork_replacement_search(damage_tracker, state_row, col));
-                        return replacements;
+                        let fork_result = Self::fork_replacement_search(damage_tracker.clone(), forked_state_row, col, cache) +
+                            Self::fork_replacement_search(damage_tracker.clone(), state_row, col, cache);
+
+                        cache.insert(key, fork_result);
+                        return fork_result;
+
                     }
                 }
             };
             if !valid_state {
-                return vec![];
+                return 0;
             }
         }
 
         if damage_tracker.is_exhausted() {
-            println!("result {:?}", state_row);
-            replacements.push(state_row);
+            return 1;
         }
-        replacements
+        0
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+struct TraversalState {
+    normalized_damage_tracker_index: usize,
+    normalized_col: usize,
+    damage_counter: usize
+}
+
+impl TraversalState {
+    fn new(damage_tracker_index: usize, col: usize, damage_counter: usize) -> Self {
+        TraversalState { normalized_damage_tracker_index: damage_tracker_index, normalized_col: col, damage_counter }
     }
 }
 
 #[derive(Clone, Debug)]
 struct DamageTracker<'a> {
-    damage_groups: Peekable<Iter<'a, usize>>,
+    damage_group_index: usize,
+    damage_groups: &'a [usize],
     damage_counter: usize,
     next_can_be_damaged: bool
 }
 
 impl<'a> DamageTracker<'a> {
     fn current_damage(&mut self) -> usize {
-        match self.damage_groups.peek() {
-            Some(damage_group) => **damage_group,
+        match self.peek() {
+            Some(damage_group) => damage_group,
             None => panic!("No more damage groups")
         }
     }
@@ -143,13 +170,13 @@ impl<'a> DamageTracker<'a> {
     }
 
     fn record_damage(&mut self) -> bool {
-        if self.damage_groups.peek().is_none() || !self.next_can_be_damaged {
+        if self.peek().is_none() || !self.next_can_be_damaged {
             return false;
         }
         self.damage_counter += 1;
         if self.damage_counter == self.current_damage() {
             self.next_can_be_damaged = false;
-            self.damage_groups.next();
+            self.next();
             self.damage_counter = 0;
         }
         true
@@ -173,8 +200,19 @@ impl<'a> DamageTracker<'a> {
         }
     }
 
-    fn is_exhausted(&mut self) -> bool {
-        self.damage_groups.peek().is_none() && self.damage_counter == 0
+    fn is_exhausted(&self) -> bool {
+        self.peek().is_none() && self.damage_counter == 0
+    }
+
+    fn peek(&self) -> Option<usize> {
+        if self.damage_group_index >= self.damage_groups.len() {
+            return None;
+        }
+        Some(self.damage_groups[self.damage_group_index])
+    }
+
+    fn next(&mut self) {
+        self.damage_group_index += 1
     }
 }
 
@@ -183,7 +221,8 @@ impl<'a> DamageTracker<'a> {
 #[derive(Debug)]
 struct SpringRecord {
     state_row: Vec<SpringState>,
-    damage_groups: Vec<usize>
+    damage_groups: Vec<usize>,
+    copies: usize
 }
 
 #[derive(Clone, PartialEq)]
@@ -205,6 +244,17 @@ mod tests {
 ????.#...#... 4,1,1
 ????.######..#####. 1,6,5
 ?###???????? 3,2,1"#;
-        assert_eq!(count_arrangements(input), 21);
+        assert_eq!(count_arrangements(input, 1), 21);
+    }
+
+    #[test]
+    fn should_count_arrangements_times_5() {
+        let input = r#"???.### 1,1,3
+.??..??...?##. 1,1,3
+?#?#?#?#?#?#?#? 1,3,1,6
+????.#...#... 4,1,1
+????.######..#####. 1,6,5
+?###???????? 3,2,1"#;
+        assert_eq!(count_arrangements(input, 5), 525152);
     }
 }

@@ -4,9 +4,34 @@ use std::str::FromStr;
 
 pub fn energized_tiles(input: &str) -> usize {
     let mut board = Board::from(input);
-    board.traverse_beam();
-    println!("{}", board);
-    board.count_energized_tiles()
+    let beam = Beam { direction: Direction::Right, position: (0, 0) };
+    board.traverse_beam_and_calculate_energized_tiles(beam)
+}
+
+pub fn maximum_energized_tiles(input: &str) -> usize {
+    let mut board = Board::from(input);
+    let height = board.tiles.len();
+    let width = board.tiles[0].len();
+
+    let mut max_energized_tiles = 0;
+
+    for row in 0..height {
+        let beam = Beam { direction: Direction::Right, position: (row, 0) };
+        max_energized_tiles = max_energized_tiles.max(board.traverse_beam_and_calculate_energized_tiles(beam));
+
+        let beam = Beam { direction: Direction::Left, position: (row, width - 1) };
+        max_energized_tiles = max_energized_tiles.max(board.traverse_beam_and_calculate_energized_tiles(beam));
+    }
+
+    for col in 0..width {
+        let beam = Beam { direction: Direction::Down, position: (0, col) };
+        max_energized_tiles = max_energized_tiles.max(board.traverse_beam_and_calculate_energized_tiles(beam));
+
+        let beam = Beam { direction: Direction::Up, position: (height - 1, col) };
+        max_energized_tiles = max_energized_tiles.max(board.traverse_beam_and_calculate_energized_tiles(beam));
+    }
+
+    max_energized_tiles
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -19,7 +44,6 @@ enum Direction {
 
 struct Board {
     tiles: Vec<Vec<Tile>>,
-    visited: HashMap<(usize, usize), Vec<Direction>>,
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -49,15 +73,39 @@ trait Reflect {
 
 impl Board {
     fn new(tiles: Vec<Vec<Tile>>) -> Self {
-        let visited = HashMap::new();
-        Board { tiles, visited }
+        Board { tiles }
     }
 
-    fn count_energized_tiles(&self) -> usize {
+    fn print(&self, visited: &HashMap<(usize, usize), Vec<Direction>>) {
+        for row in 0..self.tiles.len() {
+            println!();
+            for col in 0..self.tiles[0].len() {
+                match &self.tiles[row][col] {
+                    Tile::Empty => match visited.get(&(row, col)) {
+                        Some(directions) => match directions.len() {
+                            1 => print!("{}", directions[0]),
+                            len if len > 1 => print!("{}", len),
+                            _ => print!("."),
+                        },
+                        None => print!("."),
+                    }
+                    tile => print!("{}", tile),
+                }
+            }
+        }
+    }
+
+    fn traverse_beam_and_calculate_energized_tiles(&self, beam: Beam) -> usize {
+        let mut visited = HashMap::new();
+        self.traverse_beam(beam, &mut visited);
+        self.count_energized_tiles(&visited)
+    }
+
+    fn count_energized_tiles(&self, visited: &HashMap<(usize, usize), Vec<Direction>>) -> usize {
         let mut energized_tiles = 0;
         for row in 0..self.tiles.len() {
             for col in 0..self.tiles[0].len() {
-                match self.visited.get(&(row, col)) {
+                match visited.get(&(row, col)) {
                     Some(_) => energized_tiles += 1,
                     None => {}
                 }
@@ -66,29 +114,28 @@ impl Board {
         energized_tiles
     }
 
-    fn traverse_beam(&mut self) {
-        let beam = Beam { direction: Direction::Right, position: (0, 0) };
+    fn traverse_beam(&self, beam: Beam, visited: &mut HashMap<(usize, usize), Vec<Direction>>) {
         match self.calculate_reflected_beams(beam) {
-            (b, None) => self.do_traverse_beam(b),
+            (b, None) => self.do_traverse_beam(b, visited),
             (b1, Some(b2)) => {
-                self.do_traverse_beam(b1);
-                self.do_traverse_beam(b2);
+                self.do_traverse_beam(b1, visited);
+                self.do_traverse_beam(b2, visited);
                 return;
             }
         }
     }
 
-    fn do_traverse_beam(&mut self, mut beam: Beam) {
-        while !self.visited.entry(beam.position.clone()).or_insert(Vec::new()).contains(&beam.direction) {
-            self.visited.get_mut(&beam.position).unwrap().push(beam.direction.clone());
+    fn do_traverse_beam(&self, mut beam: Beam, visited: &mut HashMap<(usize, usize), Vec<Direction>>) {
+        while !visited.entry(beam.position.clone()).or_insert(Vec::new()).contains(&beam.direction) {
+            visited.get_mut(&beam.position).unwrap().push(beam.direction.clone());
             if !self.travel_beam(&mut beam) {
                 return;
             }
             match self.calculate_reflected_beams(beam) {
                 (b, None) => beam = b,
                 (b1, Some(b2)) => {
-                    self.do_traverse_beam(b1);
-                    self.do_traverse_beam(b2);
+                    self.do_traverse_beam(b1, visited);
+                    self.do_traverse_beam(b2, visited);
                     return;
                 }
             }
@@ -147,7 +194,7 @@ impl Board {
         }
     }
 
-    fn travel_beam(&mut self, beam: &mut Beam) -> bool {
+    fn travel_beam(&self, beam: &mut Beam) -> bool {
         match beam.direction {
             Direction::Up if beam.position.0 == 0 => return false,
             Direction::Up => beam.position.0 -= 1,
@@ -197,29 +244,6 @@ impl Display for Direction {
     }
 }
 
-impl Display for Board {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        for row in 0..self.tiles.len() {
-            writeln!(f, "")?;
-            for col in 0..self.tiles[0].len() {
-                match &self.tiles[row][col] {
-                    Tile::Empty => match self.visited.get(&(row, col)) {
-                        Some(directions) => match directions.len() {
-                            1 => write!(f, "{}", directions[0])?,
-                            len if len > 1 => write!(f, "{}", len)?,
-                            _ => write!(f, ".")?,
-                        },
-                        None => write!(f, ".")?,
-                    }
-                    tile => write!(f, "{}", tile)?,
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
 impl Display for Tile {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -251,6 +275,23 @@ mod tests {
 
         assert_eq!(46, energized_tiles(input));
     }
+
+    #[test]
+    fn should_find_max_energized_tiles() {
+        let input = r#".|...\....
+|.-.\.....
+.....|-...
+........|.
+..........
+.........\
+..../.\\..
+.-.-/..|..
+.|....-|.\
+..//.|...."#;
+
+        assert_eq!(51, maximum_energized_tiles(input));
+    }
+
 
     #[test]
     fn should_visit_mirrors_twice() {
